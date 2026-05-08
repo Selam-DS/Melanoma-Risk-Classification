@@ -1,29 +1,35 @@
 ﻿---
-title: Melanoma Risk Detector
+title: Melanoma Risk Detection App
 emoji: 🩺
 colorFrom: blue
 colorTo: red
 sdk: gradio
-sdk_version: "5.0.0"
+sdk_version: "4.44.1"
+python_version: "3.10"
 app_file: app.py
 pinned: false
 ---
 
-# Melanoma Risk Detector
+# Melanoma Risk Detection App
 
-This application predicts melanoma risk using:
+This project is a machine learning application for melanoma risk prediction using:
 
-- Dermoscopic skin lesion images
+- Image-derived CNN embeddings
 - Patient metadata
-- CNN feature extraction
-- Logistic Regression classification
+- Logistic Regression
+- Imbalance handling techniques
 
-Built using:
-- PyTorch
-- Scikit-learn
-- Gradio
-- Hugging Face Spaces
+The model was trained on the ISIC 2020 skin lesion dataset.
 
-## Disclaimer
+## Features
 
-This tool is for educational purposes only and is NOT a medical diagnostic system.
+- Upload lesion metadata
+- Predict melanoma risk
+- Demonstrates medical ML workflow
+- Built with Gradio + Hugging Face Spaces
+
+## Important Disclaimer
+
+This application is for educational and portfolio purposes only.
+
+It is NOT a medical device and should not be used for clinical diagnosis.
