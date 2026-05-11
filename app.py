@@ -70,13 +70,13 @@ def predict_melanoma(image, age, sex, anatom_site):
             img_features = img_features.view(img_features.size(0), -1)
             img_features = img_features.cpu().numpy()
 
-        metadata = pd.DataFrame([{
+        # Encoder should ONLY receive categorical features
+        categorical_metadata = pd.DataFrame([{
             "sex": sex,
-            "age_approx": age,
             "anatom_site_general_challenge": anatom_site
         }])
 
-        encoded_meta = encoder.transform(metadata)
+        encoded_meta = encoder.transform(categorical_metadata)
 
         if hasattr(encoded_meta, "toarray"):
             encoded_meta = encoded_meta.toarray()
@@ -86,12 +86,22 @@ def predict_melanoma(image, age, sex, anatom_site):
             columns=encoded_feature_order
         )
 
-        X = np.hstack([
-            img_features,
-            encoded_meta.values
-        ])
+        # Match training order:
+        # age_approx + image features + encoded categorical features
+        img_feature_names = [
+            f"img_feat_{i}" for i in range(img_features.shape[1])
+        ]
 
-        X = selector.transform(X)
+        full_feature_df = pd.DataFrame(
+            np.hstack([
+                np.array([[age]]),
+                img_features,
+                encoded_meta.values
+            ]),
+            columns=["age_approx"] + img_feature_names + list(encoded_feature_order)
+        )
+
+        X = selector.transform(full_feature_df)
         X = scaler.transform(X)
 
         probability = float(model.predict_proba(X)[0, 1])
@@ -147,8 +157,7 @@ demo = gr.Interface(
     title="Melanoma Risk Assessment",
     description=(
         "Upload a skin lesion image and enter the same metadata used during model training: "
-        "age, sex, and anatomical site. The app extracts ResNet18 image embeddings and combines "
-        "them with metadata for melanoma risk prediction. Educational prototype only — not for clinical diagnosis."
+        "age, sex, and anatomical site. Educational prototype only — not for clinical diagnosis."
     )
 )
 
