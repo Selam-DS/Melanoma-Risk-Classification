@@ -11,138 +11,161 @@ import gradio as gr
 import pandas as pd
 import numpy as np
 import joblib
-from PIL import Image
 import torch
 import torch.nn as nn
-from torchvision import transforms, models
+from torchvision import transforms
+from PIL import Image
 
-# =========================================================
-# LOAD TABULAR MODEL FILES
-# =========================================================
+# =========================
+# LOAD TABULAR MODEL
+# =========================
 
 pipeline = joblib.load("melanoma_pipeline.pkl")
 feature_order = joblib.load("encoded_feature_order.pkl")
 
-# =========================================================
-# LOAD CNN MODEL
-# =========================================================
+# =========================
+# CNN MODEL
+# =========================
 
-device = torch.device("cpu")
+class SimpleCNN(nn.Module):
+    def __init__(self):
+        super(SimpleCNN, self).__init__()
 
-cnn_model = models.resnet18(weights=None)
-cnn_model.fc = nn.Linear(cnn_model.fc.in_features, 2)
+        self.conv = nn.Sequential(
+            nn.Conv2d(3, 16, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
 
-# IMPORTANT:
-# If you DO NOT have melanoma_model.pth,
-# this safely skips loading it.
+            nn.Conv2d(16, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+
+        self.fc = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(32 * 56 * 56, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.fc(x)
+        return x
+
+cnn_model = SimpleCNN()
+
+# OPTIONAL MODEL LOAD
 try:
     cnn_model.load_state_dict(
-        torch.load("melanoma_model.pth", map_location=device)
+        torch.load("melanoma_model.pth", map_location=torch.device("cpu"))
     )
-    print("CNN model loaded.")
+    print("CNN model loaded successfully.")
 except:
     print("melanoma_model.pth not found. Using untrained CNN.")
 
 cnn_model.eval()
 
-# =========================================================
+# =========================
 # IMAGE TRANSFORM
-# =========================================================
+# =========================
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
-    transforms.ToTensor(),
+    transforms.ToTensor()
 ])
 
-# =========================================================
+# =========================
 # TABULAR PREDICTION
-# =========================================================
+# =========================
 
-def predict_tabular(age, sex, lesion_size):
+def predict_tabular(
+    age,
+    sex,
+    localization,
+    diameter,
+    elevation,
+    color,
+):
 
-    # Create dataframe
-    input_df = pd.DataFrame({
+    input_dict = {
         "age": [age],
         "sex": [sex],
-        "lesion_size": [lesion_size]
-    })
-
-    # One-hot encode
-    input_encoded = pd.get_dummies(input_df)
-
-    # Match training columns
-    input_encoded = input_encoded.reindex(
-        columns=feature_order,
-        fill_value=0
-    )
-
-    # Predict
-    prediction = pipeline.predict(input_encoded)[0]
-    probability = pipeline.predict_proba(input_encoded)[0][1]
-
-    label = "Melanoma" if prediction == 1 else "Benign"
-
-    return {
-        "Prediction": label,
-        "Melanoma Probability": float(probability)
+        "localization": [localization],
+        "diameter": [diameter],
+        "elevation": [elevation],
+        "color": [color],
     }
 
-# =========================================================
+    df = pd.DataFrame(input_dict)
+
+    pred_prob = pipeline.predict_proba(df)[0][1]
+
+    result = f"Melanoma Risk Probability: {pred_prob:.2%}"
+
+    return result
+
+# =========================
 # IMAGE PREDICTION
-# =========================================================
+# =========================
 
 def predict_image(image):
 
     if image is None:
         return "Please upload an image."
 
-    image = image.convert("RGB")
-    image_tensor = transform(image).unsqueeze(0)
+    image = transform(image).unsqueeze(0)
 
     with torch.no_grad():
-        outputs = cnn_model(image_tensor)
-        probs = torch.softmax(outputs, dim=1)
+        prediction = cnn_model(image).item()
 
-        melanoma_prob = probs[0][1].item()
+    result = f"CNN Melanoma Probability: {prediction:.2%}"
 
-    label = "Melanoma" if melanoma_prob > 0.5 else "Benign"
+    return result
 
-    return {
-        "Prediction": label,
-        "Melanoma Probability": round(melanoma_prob, 4)
-    }
-
-# =========================================================
+# =========================
 # GRADIO UI
-# =========================================================
+# =========================
 
 with gr.Blocks() as demo:
 
     gr.Markdown("# Melanoma Detection App")
-    gr.Markdown("Predict melanoma risk using patient data or skin lesion images.")
 
     with gr.Tab("Tabular Prediction"):
 
-        age = gr.Number(label="Age", value=45)
+        age = gr.Number(label="Age")
 
         sex = gr.Dropdown(
             choices=["male", "female"],
-            value="male",
             label="Sex"
         )
 
-        lesion_size = gr.Number(
-            label="Lesion Size (mm)",
-            value=10
+        localization = gr.Textbox(label="Localization")
+
+        diameter = gr.Number(label="Diameter")
+
+        elevation = gr.Dropdown(
+            choices=["flat", "raised"],
+            label="Elevation"
         )
+
+        color = gr.Textbox(label="Color")
 
         tabular_btn = gr.Button("Predict")
 
-        tabular_output = gr.JSON()
+        tabular_output = gr.Textbox(label="Prediction")
 
         tabular_btn.click(
             fn=predict_tabular,
-            inputs=[age, sex, lesion_size],
+            inputs=[
+                age,
+                sex,
+                localization,
+                diameter,
+                elevation,
+                color
+            ],
             outputs=tabular_output
         )
 
@@ -153,9 +176,9 @@ with gr.Blocks() as demo:
             label="Upload Skin Lesion Image"
         )
 
-        image_btn = gr.Button("Analyze Image")
+        image_btn = gr.Button("Predict")
 
-        image_output = gr.JSON()
+        image_output = gr.Textbox(label="Prediction")
 
         image_btn.click(
             fn=predict_image,
@@ -163,8 +186,8 @@ with gr.Blocks() as demo:
             outputs=image_output
         )
 
-# =========================================================
+# =========================
 # LAUNCH
-# =========================================================
+# =========================
 
-demo.launch()
+demo.launch(share=True)
