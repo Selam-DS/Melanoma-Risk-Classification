@@ -35,17 +35,24 @@ encoded_feature_order = joblib.load(
 )
 
 # -----------------------------------
-# ResNet18 feature extractor
+# Device setup
 # -----------------------------------
 
 device = torch.device("cpu")
 
+# -----------------------------------
+# ResNet18 feature extractor
+# -----------------------------------
+
 resnet = models.resnet18(weights="DEFAULT")
+
+# Remove classification head
 resnet = torch.nn.Sequential(
     *list(resnet.children())[:-1]
 )
 
 resnet.eval()
+resnet.to(device)
 
 # -----------------------------------
 # Image preprocessing
@@ -67,10 +74,17 @@ transform = transforms.Compose([
 def predict(image, age, sex, site):
 
     # -----------------------------
+    # Validate image
+    # -----------------------------
+
+    if image is None:
+        return "Please upload an image."
+
+    # -----------------------------
     # IMAGE FEATURES
     # -----------------------------
 
-    img = transform(image).unsqueeze(0)
+    img = transform(image).unsqueeze(0).to(device)
 
     with torch.no_grad():
 
@@ -78,7 +92,9 @@ def predict(image, age, sex, site):
 
         img_features = img_features.view(
             img_features.size(0), -1
-        ).numpy()
+        )
+
+        img_features = img_features.cpu().numpy()
 
     # -----------------------------
     # METADATA
@@ -126,12 +142,16 @@ def predict(image, age, sex, site):
         else "Lower Melanoma Risk"
     )
 
-    return {
-        "Prediction": prediction,
-        "Melanoma Probability": round(
-            float(probability), 4
-        )
-    }
+    probability = round(float(probability), 4)
+
+    # -----------------------------
+    # RETURN OUTPUT
+    # -----------------------------
+
+    return (
+        f"Prediction: {prediction}\n\n"
+        f"Melanoma Probability: {probability}"
+    )
 
 # -----------------------------------
 # Gradio Interface
@@ -141,17 +161,22 @@ demo = gr.Interface(
     fn=predict,
 
     inputs=[
-        gr.Image(type="pil"),
+        gr.Image(
+            type="pil",
+            label="Upload Skin Lesion Image"
+        ),
 
         gr.Slider(
             minimum=0,
             maximum=100,
             value=45,
+            step=1,
             label="Age"
         ),
 
         gr.Dropdown(
             ["male", "female", "unknown"],
+            value="unknown",
             label="Sex"
         ),
 
@@ -163,23 +188,33 @@ demo = gr.Interface(
                 "head/neck",
                 "unknown"
             ],
+            value="unknown",
             label="Anatomical Site"
         )
     ],
 
-    outputs="label",
+    outputs=gr.Textbox(
+        label="Prediction Result"
+    ),
 
     title="Melanoma Risk Assessment",
 
     description="""
 AI-powered melanoma risk assessment using:
-- CNN image embeddings (ResNet18)
-- Clinical metadata
-- Logistic Regression
+• ResNet18 image embeddings
+• Clinical metadata
+• Logistic Regression
 
 Educational research prototype only.
 Not intended for clinical diagnosis.
 """
 )
 
-demo.launch()
+# -----------------------------------
+# Launch app
+# -----------------------------------
+
+demo.launch(
+    share=True,
+    show_api=False
+)
