@@ -105,7 +105,7 @@ The project was deployed using Gradio and Hugging Face Spaces.
 
 ### Live Demo
 
-[Launch Application](YOUR_HUGGINGFACE_LINK_HERE)
+[Launch Application](https://huggingface.co/spaces/SelamDS/melanoma-risk-app)
 
 ---
 
