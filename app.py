@@ -155,10 +155,6 @@ demo = gr.Interface(
     ],
     outputs=gr.Textbox(label="Prediction Result"),
     title="Melanoma Risk Assessment",
-    description=(
-        "Upload a skin lesion image and enter the same metadata used during model training: "
-        "age, sex, and anatomical site. Educational prototype only — not for clinical diagnosis."
-    )
 )
 
 # =========================
