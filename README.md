@@ -1,45 +1,144 @@
-﻿---
-title: Melanoma Risk Assessment
-emoji: 🩺
-colorFrom: blue
-colorTo: red
-sdk: gradio
-sdk_version: "5.29.0"
-python_version: "3.10"
-app_file: app.py
-pinned: false
+# Melanoma Risk Classification Using Deep Learning and Clinical Metadata
+
+## Overview
+
+This project explores the use of deep learning and machine learning techniques for melanoma risk classification using dermoscopic skin lesion images and patient clinical metadata.
+
+The system combines image-based feature extraction using a pretrained ResNet18 convolutional neural network (CNN) with structured patient information including age, sex, and anatomical site. These features are integrated into a traditional machine learning pipeline optimized for highly imbalanced medical classification.
+
+A deployed interactive application was also developed using Gradio and Hugging Face Spaces to demonstrate real-time melanoma risk prediction.
+
 ---
 
-# Melanoma Risk Classification App
+## Project Objectives
 
-This application predicts melanoma risk using a machine learning pipeline trained on the ISIC 2020 skin lesion dataset.
+- Develop a hybrid deep learning + machine learning classification pipeline
+- Address severe class imbalance in melanoma detection
+- Evaluate performance using metrics appropriate for medical AI systems
+- Deploy the model as an interactive web application
 
-The model combines:
-- Image-based features extracted using a pretrained ResNet CNN
+---
+
+## Dataset
+
+This project uses the SIIM-ISIC Melanoma Classification dataset from Kaggle.
+
+The dataset includes:
+- Dermoscopic skin lesion images
 - Patient metadata
-- Logistic Regression optimized for imbalanced medical classification
+- Binary melanoma classification labels
 
-## Features
+Due to significant class imbalance (~2% melanoma cases), specialized evaluation strategies and threshold optimization were required.
 
-- Upload a skin lesion image
-- Enter patient metadata
-- Generate melanoma risk prediction
-- Displays prediction probability
+---
 
-## Model Pipeline
+## Methodology
 
-The final model includes:
-- CNN feature extraction
+### 1. Image Feature Extraction
+
+A pretrained ResNet18 CNN was used as a feature extractor. The final classification layer was removed, allowing deep image embeddings to be extracted from each lesion image.
+
+### 2. Metadata Processing
+
+Clinical metadata included:
+- Age
+- Sex
+- Anatomical lesion site
+
+Categorical variables were encoded using OneHotEncoder.
+
+### 3. Feature Engineering
+
+Image embeddings and encoded metadata were combined into a unified feature space.
+
+Additional preprocessing steps included:
 - Feature selection
-- Controlled oversampling
-- Feature scaling
-- Logistic Regression with class weighting
-- Threshold tuning for improved melanoma recall
+- Standardization
+- Threshold optimization
 
-## Important Disclaimer
+### 4. Classification
 
-This application is for educational and research purposes only.
+A Logistic Regression classifier was trained using:
+- Class weighting
+- Optimized probability thresholding
+- Evaluation focused on minority-class performance
 
-It is **NOT** a medical diagnostic tool and should not be used for clinical decision-making.
+---
 
-Always consult a qualified healthcare professional for medical advice.
+## Model Performance
+
+Because melanoma detection is a highly imbalanced classification problem, evaluation focused on medically relevant metrics beyond accuracy.
+
+### ROC Curve
+
+The ROC curve evaluates how well the model separates melanoma from benign lesions across different thresholds. The model achieved strong overall discrimination performance.
+
+### Precision-Recall Curve
+
+The Precision-Recall curve provides a more informative evaluation for imbalanced medical datasets by focusing specifically on melanoma detection performance and the trade-off between recall and precision.
+
+---
+
+## Project Visuals
+
+## Pipeline Diagram
+
+![Pipeline Diagram](images/melanoma-pipeline-diagram.png)
+
+---
+
+## ROC Curve
+
+![ROC Curve](images/melanoma-roc-curve.png)
+
+---
+
+## Confusion Matrix
+
+![Confusion Matrix](images/melanoma-confusion-matrix.png)
+
+---
+
+## Application Demo
+
+The project was deployed using Gradio and Hugging Face Spaces.
+
+### Live Demo
+
+[Launch Application](YOUR_HUGGINGFACE_LINK_HERE)
+
+---
+
+## Technologies Used
+
+- Python
+- PyTorch
+- Scikit-learn
+- Pandas
+- NumPy
+- OpenCV
+- Gradio
+- Hugging Face Spaces
+
+---
+
+## Repository Structure
+
+```text
+Melanoma-Risk-Classification/
+│
+├── app.py
+├── README.md
+├── requirements.txt
+├── melanoma_pipeline.pkl
+├── encoded_feature_order.pkl
+│
+├── notebooks/
+│   └── Melanoma_Risk_Classification.ipynb
+│
+├── images/
+│   ├── melanoma-demo.mp4
+│   ├── melanoma-app-preview.png
+│   ├── melanoma-confusion-matrix.png
+│   ├── melanoma-pipeline-diagram.png
+│   └── melanoma-roc-curve.png
