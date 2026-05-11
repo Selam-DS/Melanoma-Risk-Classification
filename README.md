@@ -1,35 +1,45 @@
-﻿
----  
-title: Melanoma Risk Assessment  
-emoji: 🩺  
-colorFrom: blue  
-colorTo: red  
-sdk: gradio  
-python_version: "3.10"  
-app_file: app.py  
-pinned: false  
+﻿---
+title: Melanoma Risk Assessment
+emoji: 🩺
+colorFrom: blue
+colorTo: red
+sdk: gradio
+sdk_version: "5.29.0"
+python_version: "3.10"
+app_file: app.py
+pinned: false
 ---
 
-# Melanoma Risk Detection App
+# Melanoma Risk Classification App
 
-This project is a machine learning application for melanoma risk prediction using:
+This application predicts melanoma risk using a machine learning pipeline trained on the ISIC 2020 skin lesion dataset.
 
-- Image-derived CNN embeddings
+The model combines:
+- Image-based features extracted using a pretrained ResNet CNN
 - Patient metadata
-- Logistic Regression
-- Imbalance handling techniques
-
-The model was trained on the ISIC 2020 skin lesion dataset.
+- Logistic Regression optimized for imbalanced medical classification
 
 ## Features
 
-- Upload lesion metadata
-- Predict melanoma risk
-- Demonstrates medical ML workflow
-- Built with Gradio + Hugging Face Spaces
+- Upload a skin lesion image
+- Enter patient metadata
+- Generate melanoma risk prediction
+- Displays prediction probability
+
+## Model Pipeline
+
+The final model includes:
+- CNN feature extraction
+- Feature selection
+- Controlled oversampling
+- Feature scaling
+- Logistic Regression with class weighting
+- Threshold tuning for improved melanoma recall
 
 ## Important Disclaimer
 
-This application is for educational and portfolio purposes only.
+This application is for educational and research purposes only.
 
-It is NOT a medical device and should not be used for clinical diagnosis.
+It is **NOT** a medical diagnostic tool and should not be used for clinical decision-making.
+
+Always consult a qualified healthcare professional for medical advice.
