@@ -8,236 +8,163 @@ Original file is located at
 """
 
 import gradio as gr
-import torch
-import torchvision.models as models
-import torchvision.transforms as transforms
-
 import pandas as pd
 import numpy as np
 import joblib
-
 from PIL import Image
+import torch
+import torch.nn as nn
+from torchvision import transforms, models
 
-# ===================================
-# LOAD SAVED PIPELINE ARTIFACTS
-# ===================================
+# =========================================================
+# LOAD TABULAR MODEL FILES
+# =========================================================
 
-bundle = joblib.load("melanoma_pipeline.pkl")
+pipeline = joblib.load("melanoma_pipeline.pkl")
+feature_order = joblib.load("encoded_feature_order.pkl")
 
-model = bundle["model"]
-scaler = bundle["scaler"]
-selector = bundle["selector"]
-encoder = bundle["encoder"]
-threshold = bundle["threshold"]
-
-encoded_feature_order = joblib.load(
-    "encoded_feature_order.pkl"
-)
-
-# ===================================
-# DEVICE SETUP
-# ===================================
+# =========================================================
+# LOAD CNN MODEL
+# =========================================================
 
 device = torch.device("cpu")
 
-# ===================================
-# RESNET18 FEATURE EXTRACTOR
-# ===================================
+cnn_model = models.resnet18(weights=None)
+cnn_model.fc = nn.Linear(cnn_model.fc.in_features, 2)
 
-resnet = models.resnet18(weights="DEFAULT")
+# IMPORTANT:
+# If you DO NOT have melanoma_model.pth,
+# this safely skips loading it.
+try:
+    cnn_model.load_state_dict(
+        torch.load("melanoma_model.pth", map_location=device)
+    )
+    print("CNN model loaded.")
+except:
+    print("melanoma_model.pth not found. Using untrained CNN.")
 
-# Remove classification layer
-resnet = torch.nn.Sequential(
-    *list(resnet.children())[:-1]
-)
+cnn_model.eval()
 
-resnet.eval()
-resnet.to(device)
-
-# ===================================
-# IMAGE TRANSFORMATIONS
-# ===================================
+# =========================================================
+# IMAGE TRANSFORM
+# =========================================================
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
 ])
 
-# ===================================
-# PREDICTION FUNCTION
-# ===================================
+# =========================================================
+# TABULAR PREDICTION
+# =========================================================
 
-def predict(image, age, sex, site):
+def predict_tabular(age, sex, lesion_size):
 
-    try:
+    # Create dataframe
+    input_df = pd.DataFrame({
+        "age": [age],
+        "sex": [sex],
+        "lesion_size": [lesion_size]
+    })
 
-        # ---------------------------
-        # VALIDATE IMAGE
-        # ---------------------------
+    # One-hot encode
+    input_encoded = pd.get_dummies(input_df)
 
-        if image is None:
-            return "Please upload an image."
+    # Match training columns
+    input_encoded = input_encoded.reindex(
+        columns=feature_order,
+        fill_value=0
+    )
 
-        # ---------------------------
-        # IMAGE FEATURES
-        # ---------------------------
+    # Predict
+    prediction = pipeline.predict(input_encoded)[0]
+    probability = pipeline.predict_proba(input_encoded)[0][1]
 
-        img = transform(image).unsqueeze(0).to(device)
+    label = "Melanoma" if prediction == 1 else "Benign"
 
-        with torch.no_grad():
+    return {
+        "Prediction": label,
+        "Melanoma Probability": float(probability)
+    }
 
-            img_features = resnet(img)
+# =========================================================
+# IMAGE PREDICTION
+# =========================================================
 
-            img_features = img_features.view(
-                img_features.size(0),
-                -1
-            )
+def predict_image(image):
 
-            img_features = img_features.cpu().numpy()
+    if image is None:
+        return "Please upload an image."
 
-        # ---------------------------
-        # METADATA
-        # ---------------------------
+    image = image.convert("RGB")
+    image_tensor = transform(image).unsqueeze(0)
 
-        metadata = pd.DataFrame([{
-            "sex": sex,
-            "age_approx": age,
-            "anatom_site_general_challenge": site
-        }])
+    with torch.no_grad():
+        outputs = cnn_model(image_tensor)
+        probs = torch.softmax(outputs, dim=1)
 
-        encoded_meta = encoder.transform(metadata)
+        melanoma_prob = probs[0][1].item()
 
-        # Convert sparse matrix if needed
-        if hasattr(encoded_meta, "toarray"):
-            encoded_meta = encoded_meta.toarray()
+    label = "Melanoma" if melanoma_prob > 0.5 else "Benign"
 
-        encoded_meta = pd.DataFrame(
-            encoded_meta,
-            columns=encoded_feature_order
+    return {
+        "Prediction": label,
+        "Melanoma Probability": round(melanoma_prob, 4)
+    }
+
+# =========================================================
+# GRADIO UI
+# =========================================================
+
+with gr.Blocks() as demo:
+
+    gr.Markdown("# Melanoma Detection App")
+    gr.Markdown("Predict melanoma risk using patient data or skin lesion images.")
+
+    with gr.Tab("Tabular Prediction"):
+
+        age = gr.Number(label="Age", value=45)
+
+        sex = gr.Dropdown(
+            choices=["male", "female"],
+            value="male",
+            label="Sex"
         )
 
-        # ---------------------------
-        # COMBINE FEATURES
-        # ---------------------------
-
-        X = np.hstack([
-            img_features,
-            encoded_meta.values
-        ])
-
-        # ---------------------------
-        # FEATURE SELECTION
-        # ---------------------------
-
-        X = selector.transform(X)
-
-        # ---------------------------
-        # SCALING
-        # ---------------------------
-
-        X = scaler.transform(X)
-
-        # ---------------------------
-        # PREDICTION
-        # ---------------------------
-
-        probability = model.predict_proba(X)[0, 1]
-
-        prediction = (
-            "Higher Melanoma Risk"
-            if probability > threshold
-            else "Lower Melanoma Risk"
+        lesion_size = gr.Number(
+            label="Lesion Size (mm)",
+            value=10
         )
 
-        probability = round(
-            float(probability),
-            4
+        tabular_btn = gr.Button("Predict")
+
+        tabular_output = gr.JSON()
+
+        tabular_btn.click(
+            fn=predict_tabular,
+            inputs=[age, sex, lesion_size],
+            outputs=tabular_output
         )
 
-        # ---------------------------
-        # RETURN RESULT
-        # ---------------------------
+    with gr.Tab("Image Prediction"):
 
-        return (
-            f"Prediction: {prediction}\n\n"
-            f"Melanoma Probability: {probability}"
-        )
-
-    except Exception as e:
-
-        return f"Error: {str(e)}"
-
-# ===================================
-# GRADIO INTERFACE
-# ===================================
-
-demo = gr.Interface(
-    fn=predict,
-
-    inputs=[
-
-        gr.Image(
+        image_input = gr.Image(
             type="pil",
             label="Upload Skin Lesion Image"
-        ),
-
-        gr.Slider(
-            minimum=0,
-            maximum=100,
-            value=45,
-            step=1,
-            label="Age"
-        ),
-
-        gr.Dropdown(
-            choices=[
-                "male",
-                "female",
-                "unknown"
-            ],
-            value="unknown",
-            label="Sex"
-        ),
-
-        gr.Dropdown(
-            choices=[
-                "torso",
-                "lower extremity",
-                "upper extremity",
-                "head/neck",
-                "unknown"
-            ],
-            value="unknown",
-            label="Anatomical Site"
         )
-    ],
 
-    outputs=gr.Textbox(
-        label="Prediction Result"
-    ),
+        image_btn = gr.Button("Analyze Image")
 
-    title="Melanoma Risk Assessment",
+        image_output = gr.JSON()
 
-    description="""
-AI-powered melanoma risk assessment using:
-• ResNet18 image embeddings
-• Clinical metadata
-• Logistic Regression
+        image_btn.click(
+            fn=predict_image,
+            inputs=image_input,
+            outputs=image_output
+        )
 
-Educational research prototype only.
-Not intended for clinical diagnosis.
-"""
-)
+# =========================================================
+# LAUNCH
+# =========================================================
 
-# ===================================
-# LAUNCH APPLICATION
-# ===================================
-
-demo.launch(
-    share=True,
-    show_api=False
-)
+demo.launch()
