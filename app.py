@@ -18,9 +18,9 @@ import joblib
 
 from PIL import Image
 
-# -----------------------------------
-# Load deployment artifacts
-# -----------------------------------
+# ===================================
+# LOAD SAVED PIPELINE ARTIFACTS
+# ===================================
 
 bundle = joblib.load("melanoma_pipeline.pkl")
 
@@ -34,19 +34,19 @@ encoded_feature_order = joblib.load(
     "encoded_feature_order.pkl"
 )
 
-# -----------------------------------
-# Device setup
-# -----------------------------------
+# ===================================
+# DEVICE SETUP
+# ===================================
 
 device = torch.device("cpu")
 
-# -----------------------------------
-# ResNet18 feature extractor
-# -----------------------------------
+# ===================================
+# RESNET18 FEATURE EXTRACTOR
+# ===================================
 
 resnet = models.resnet18(weights="DEFAULT")
 
-# Remove classification head
+# Remove classification layer
 resnet = torch.nn.Sequential(
     *list(resnet.children())[:-1]
 )
@@ -54,9 +54,9 @@ resnet = torch.nn.Sequential(
 resnet.eval()
 resnet.to(device)
 
-# -----------------------------------
-# Image preprocessing
-# -----------------------------------
+# ===================================
+# IMAGE TRANSFORMATIONS
+# ===================================
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -67,100 +67,119 @@ transform = transforms.Compose([
     )
 ])
 
-# -----------------------------------
-# Prediction function
-# -----------------------------------
+# ===================================
+# PREDICTION FUNCTION
+# ===================================
 
 def predict(image, age, sex, site):
 
-    # -----------------------------
-    # Validate image
-    # -----------------------------
+    try:
 
-    if image is None:
-        return "Please upload an image."
+        # ---------------------------
+        # VALIDATE IMAGE
+        # ---------------------------
 
-    # -----------------------------
-    # IMAGE FEATURES
-    # -----------------------------
+        if image is None:
+            return "Please upload an image."
 
-    img = transform(image).unsqueeze(0).to(device)
+        # ---------------------------
+        # IMAGE FEATURES
+        # ---------------------------
 
-    with torch.no_grad():
+        img = transform(image).unsqueeze(0).to(device)
 
-        img_features = resnet(img)
+        with torch.no_grad():
 
-        img_features = img_features.view(
-            img_features.size(0), -1
+            img_features = resnet(img)
+
+            img_features = img_features.view(
+                img_features.size(0),
+                -1
+            )
+
+            img_features = img_features.cpu().numpy()
+
+        # ---------------------------
+        # METADATA
+        # ---------------------------
+
+        metadata = pd.DataFrame([{
+            "sex": sex,
+            "age_approx": age,
+            "anatom_site_general_challenge": site
+        }])
+
+        encoded_meta = encoder.transform(metadata)
+
+        # Convert sparse matrix if needed
+        if hasattr(encoded_meta, "toarray"):
+            encoded_meta = encoded_meta.toarray()
+
+        encoded_meta = pd.DataFrame(
+            encoded_meta,
+            columns=encoded_feature_order
         )
 
-        img_features = img_features.cpu().numpy()
+        # ---------------------------
+        # COMBINE FEATURES
+        # ---------------------------
 
-    # -----------------------------
-    # METADATA
-    # -----------------------------
+        X = np.hstack([
+            img_features,
+            encoded_meta.values
+        ])
 
-    metadata = pd.DataFrame([{
-        "sex": sex,
-        "age_approx": age,
-        "anatom_site_general_challenge": site
-    }])
+        # ---------------------------
+        # FEATURE SELECTION
+        # ---------------------------
 
-    encoded_meta = encoder.transform(metadata)
+        X = selector.transform(X)
 
-    encoded_meta = pd.DataFrame(
-        encoded_meta,
-        columns=encoded_feature_order
-    )
+        # ---------------------------
+        # SCALING
+        # ---------------------------
 
-    # -----------------------------
-    # COMBINE FEATURES
-    # -----------------------------
+        X = scaler.transform(X)
 
-    X = np.hstack([
-        img_features,
-        encoded_meta.values
-    ])
+        # ---------------------------
+        # PREDICTION
+        # ---------------------------
 
-    # -----------------------------
-    # PREPROCESSING
-    # -----------------------------
+        probability = model.predict_proba(X)[0, 1]
 
-    X = selector.transform(X)
+        prediction = (
+            "Higher Melanoma Risk"
+            if probability > threshold
+            else "Lower Melanoma Risk"
+        )
 
-    X = scaler.transform(X)
+        probability = round(
+            float(probability),
+            4
+        )
 
-    # -----------------------------
-    # PREDICT
-    # -----------------------------
+        # ---------------------------
+        # RETURN RESULT
+        # ---------------------------
 
-    probability = model.predict_proba(X)[0, 1]
+        return (
+            f"Prediction: {prediction}\n\n"
+            f"Melanoma Probability: {probability}"
+        )
 
-    prediction = (
-        "Higher Melanoma Risk"
-        if probability > threshold
-        else "Lower Melanoma Risk"
-    )
+    except Exception as e:
 
-    probability = round(float(probability), 4)
+        return f"Error: {str(e)}"
 
-    # -----------------------------
-    # RETURN OUTPUT
-    # -----------------------------
-
-    return (
-        f"Prediction: {prediction}\n\n"
-        f"Melanoma Probability: {probability}"
-    )
-
-# -----------------------------------
-# Gradio Interface
-# -----------------------------------
+# ===================================
+# GRADIO INTERFACE
+# ===================================
 
 demo = gr.Interface(
     fn=predict,
 
     inputs=[
+
         gr.Image(
             type="pil",
             label="Upload Skin Lesion Image"
@@ -175,13 +194,17 @@ demo = gr.Interface(
         ),
 
         gr.Dropdown(
-            ["male", "female", "unknown"],
+            choices=[
+                "male",
+                "female",
+                "unknown"
+            ],
             value="unknown",
             label="Sex"
         ),
 
         gr.Dropdown(
-            [
+            choices=[
                 "torso",
                 "lower extremity",
                 "upper extremity",
@@ -210,9 +233,9 @@ Not intended for clinical diagnosis.
 """
 )
 
-# -----------------------------------
-# Launch app
-# -----------------------------------
+# ===================================
+# LAUNCH APPLICATION
+# ===================================
 
 demo.launch(
     share=True,
